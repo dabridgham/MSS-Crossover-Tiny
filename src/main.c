@@ -6,6 +6,13 @@
 #define bit_set(reg, bit) { reg |= (1<<bit); }
 #define bit_clear(reg, bit) { reg &= ~(1<<bit); }
 
+#define LED_ON() { bit_set(PORTB, PORTB2) }
+#define LED_OFF() { bit_clear(PORTB, PORTB2) }
+
+/* Control both the LED and the MSS output */
+#define OUTPUT_ON() { PORTB |= bit(PORTB2) | bit(PORTB0); }
+#define OUTPUT_OFF() { PORTB &= ~(bit(PORTB2) | bit(PORTB0)); }
+
 const int16_t attack = 50;
 const int16_t decay = 30;
 const int32_t filtern = 980;
@@ -77,11 +84,9 @@ int main()
     /* use the LED to show various things */
     if (!bit_is_set(PINB, DDB1) ||
 	(amplitude > threshold)) {
-      bit_set(PORTB, PORTB2);   // Turn the LED on.
-      //      PORTB |= bit(PORTB2);
+      OUTPUT_ON();
     } else {
-      bit_clear(PORTB, PORTB2);   // Turn the LED off.
-      //      PORTB &= ~bit(PORTB2);  // Turn the LED off.
+      OUTPUT_OFF();
     }
 
     _delay_ms(1);
