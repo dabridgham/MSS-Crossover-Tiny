@@ -2163,7 +2163,7 @@
     (property "Datasheet" "http://www.allegromicro.com/~/media/Files/Datasheets/ACS724-Datasheet.ashx?la=en" (at 72.39 128.27 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "MPN" "ACS724LLCTR-05AB" (at 72.39 128.27 0)
+    (property "MPN" "ACS724LLCTR-05AB-T" (at 72.39 128.27 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (pin "1" (uuid f7ed3a7b-7aab-4fc0-82b0-4ab5ba71e4c3))
