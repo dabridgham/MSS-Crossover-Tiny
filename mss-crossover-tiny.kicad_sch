@@ -3199,7 +3199,7 @@
     (property "Datasheet" "http://ww1.microchip.com/downloads/en/DeviceDoc/atmel-2586-avr-8-bit-microcontroller-attiny25-attiny45-attiny85_datasheet.pdf" (at 132.08 97.79 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "MPN" "ATtiny25-20SS" (at 132.08 97.79 0)
+    (property "MPN" "ATtiny25-20SSU" (at 132.08 97.79 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (pin "1" (uuid 88fe863e-3113-452f-8786-503570cf5e1f))
