@@ -13,16 +13,32 @@
 #define OUTPUT_ON() { PORTB |= bit(PORTB2) | bit(PORTB0); }
 #define OUTPUT_OFF() { PORTB &= ~(bit(PORTB2) | bit(PORTB0)); }
 
+#define BUTTON_PUSHED() !bit_is_set(PINB, DDB1)
+
 const int16_t attack = 50;
 const int16_t decay = 30;
-const int32_t filtern = 980;
-const int32_t filterd = 1000;
+const int32_t filtern = 980;	/* filter numerator */
+const int32_t filterd = 1000;	/* filter deniminator */
 #define filter(old, new) (((old * filtern)/filterd) + (((new * (filterd-filtern))/filterd)))
+
+/* Read the A/D Converter */
+uint16_t read_adc()
+{
+  uint8_t c_low, c_hi;
+
+  ADCSRA |= bit(ADSC);	/* start conversion */
+  while (bit_is_set(ADCSRA, ADSC)) /* wait for ADC to finish */
+    ;				   /* should probably time out */
+
+  /* must read low then high, per the datasheet */
+  c_low = ADCL;
+  c_hi = ADCH;
+  return (c_hi << 8) | c_low;
+}
 
 int main()
 {
   int16_t current, hi, low, amplitude, hi_amp, threshold, mean, variance;
-  uint8_t c_low, c_hi;
 
   hi = low = 0;
   amplitude = 10000;
@@ -31,9 +47,9 @@ int main()
   mean = 0;
   variance = 0;
 
-  DDRB = 0;			// set all pin as inputs (is the default anyway)
+  DDRB = bit(DDB0) | bit(DDB2); // Set pin 5 (PB0) and 7 (PB2) be
+				// outputs, all others inputs
   PORTB |= bit(DDB1);		// enable pullup on pin 6 (PB1)
-  DDRB |= bit(DDB2);		// Make pin 7 (PB2) be an output.  
 
   /* setup the ADC */
   ADMUX = bit(REFS2) | bit(REFS1) | // Vref = internal 2.56V
@@ -49,15 +65,7 @@ int main()
 
 
   while (1) {
-
-    ADCSRA |= bit(ADSC);	/* start conversion */
-    while (bit_is_set(ADCSRA, ADSC))
-      ;				/* busy wait (should probably time out) */
-
-    /* must read low then high, per the datasheet */
-    c_low = ADCL;
-    c_hi = ADCH;
-    current = (c_hi << 8) | c_low;
+    current = read_adc();
 
     /* consider some stats (probably to be removed later) */
     mean = filter(mean, current);
@@ -72,7 +80,7 @@ int main()
     amplitude = filter(amplitude, hi - low);
 
     /* set threshold */
-    if (!bit_is_set(PINB, DDB1)) {
+    if (BUTTON_PUSHED()) {
       if (amplitude > hi_amp) {
 	hi_amp = amplitude;
 	threshold = (hi_amp * 3) / 2;
@@ -82,7 +90,7 @@ int main()
 
 
     /* use the LED to show various things */
-    if (!bit_is_set(PINB, DDB1) ||
+    if (BUTTON_PUSHED() ||
 	(amplitude > threshold)) {
       OUTPUT_ON();
     } else {
