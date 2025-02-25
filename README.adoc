@@ -5,6 +5,8 @@ https://www.modularsignalsystem.info/index.html[MSS] Crossover node.
 It includes the block detection circuit and the crossover wiring
 between two RJ45 connectors.
 
-This circuit is implemented with a resistor as the current sense
-element and then an ATtiny to do the math.
+The block detection is implemented with a resistor as the current
+sense element and then an ATtiny to do the math.  The board includes
+the bridge rectifier so it can be powered off the ACC bus and it uses
+optoisolators to drive the MSS line.
 
