@@ -1,9 +1,9 @@
 = MSS Crossover
 
 A KiCad project for a circuit board that implements an
-https://www.modularsignalsystem.info/index.html[MSS] Crossover node.
-It includes the block detection circuit and the crossover wiring
-between two RJ45 connectors.
+https://www.modularsignalsystem.info/index.html[MSS] Detection node
+(aka Crossover node).  It includes the block detection circuit and the
+crossover wiring between two RJ45 connectors.
 
 The block detection is implemented with a resistor as the current
 sense element and then an ATtiny to do the math.  The board includes
