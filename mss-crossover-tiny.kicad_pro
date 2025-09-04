@@ -109,6 +109,7 @@
         "solder_mask_bridge": "error",
         "starved_thermal": "error",
         "text_height": "warning",
+        "text_on_edge_cuts": "error",
         "text_thickness": "warning",
         "through_hole_pad_without_hole": "error",
         "too_many_vias": "error",
@@ -250,6 +251,7 @@
     "layer_presets": [
       {
         "activeLayer": -2,
+        "flipBoard": false,
         "layers": [
           0,
           1,
@@ -622,6 +624,7 @@
       "single_global_label": "ignore",
       "unannotated": "error",
       "unconnected_wire_endpoint": "warning",
+      "undefined_netclass": "error",
       "unit_value_mismatch": "error",
       "unresolved_variable": "error",
       "wire_dangling": "error"
@@ -777,11 +780,17 @@
           "label": "FT Position Offset",
           "name": "FT Position Offset",
           "show": true
+        },
+        {
+          "group_by": false,
+          "label": "Sim.Pins",
+          "name": "Sim.Pins",
+          "show": false
         }
       ],
       "filter_string": "",
       "group_symbols": true,
-      "include_excluded_from_bom": false,
+      "include_excluded_from_bom": true,
       "name": "",
       "sort_asc": true,
       "sort_field": "Reference"
