@@ -1,6 +1,10 @@
 #define F_CPU 1000000UL		/* default internal clock is 1 MHz (8 MHz div 8) */
 #include <avr/io.h>
 #include <util/delay.h>
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/atomic.h>
+
  
 #define bit(n) (1<<n)
 #define bit_set(reg, bit) { reg |= (1<<bit); }
@@ -13,13 +17,76 @@
 #define OUTPUT_ON() { PORTB |= bit(PORTB2) | bit(PORTB0); }
 #define OUTPUT_OFF() { PORTB &= ~(bit(PORTB2) | bit(PORTB0)); }
 
-#define BUTTON_PUSHED() !bit_is_set(PINB, DDB1)
+#define BUTTON_PUSHED() (!bit_is_set(PINB, DDB1))
 
-const int16_t attack = 50;
-const int16_t decay = 30;
+const int16_t attack = 100;
+const int16_t decay = 10;
 const int32_t filtern = 980;	/* filter numerator */
-const int32_t filterd = 1000;	/* filter deniminator */
+const int32_t filterd = 1000;	/* filter denominator */
+const unsigned int timeout = 2000; /* 2 seconds */
 #define filter(old, new) (((old * filtern)/filterd) + (((new * (filterd-filtern))/filterd)))
+
+/*
+ * Timer interrupt code to implement a millis() functin.
+ */
+volatile unsigned long timer0_millis = 0;
+
+// Initialize the timer for 1ms interrupts
+void millis_init(void) {
+    // Set Timer0 to CTC mode with a prescaler of 64
+    TCCR0A = (1 << WGM01);
+    TCCR0B = (1 << CS01) | (1 << CS00); // Prescaler 64
+
+    // Set compare value for 1ms at 16MHz: (16,000,000 / 64) / 1000 = 250
+    // Set compare value for 1ms at 1MHz: (1,000,000 / 64) / 1000 = 16
+    OCR0A = 16;
+
+    // Enable compare match interrupt
+    TIMSK |= (1 << OCIE0A);
+
+    // Enable global interrupts
+    sei();
+}
+
+// Timer0 compare match interrupt service routine
+ISR(TIMER0_COMPA_vect) {
+    timer0_millis++;
+}
+
+// Return the number of milliseconds since the program started
+unsigned long millis(void) {
+    unsigned long m;
+    ATOMIC_BLOCK(ATOMIC_FORCEON) {
+        m = timer0_millis;
+    }
+    return m;
+}   
+
+/* Setup the ADC */
+void adc_init()
+{
+  ADMUX =		  // Vref = Vcc
+    bit(ADLAR) |	  // left shifted
+    0x2;		  // input is single-ended PB4 (ADC2)
+  DIDR0 = bit(ADC2D);	  // disable the digital inputs on ADC2
+  ADCSRB = bit(BIN);	  // bipolar input mode, free running mode
+  ADCSRA = bit(ADEN) |	  // enable ADC
+    //    bit(ADSC) |		// start conversion
+    //    bit(ADATE) |		// auto trigger enable
+    bit(ADPS2) | bit(ADPS1) | bit(ADPS0); // scale ADC clock by 128
+
+
+  /* setup the ADC */
+  ADMUX =		  // Vref = Vcc
+    bit(ADLAR) |	  // left shifted
+    0x2;		  // input is single-ended PB4 (ADC2)
+  DIDR0 = bit(ADC2D);	  // disable the digital inputs on ADC2
+  ADCSRB = bit(BIN);	  // bipolar input mode, free running mode
+  ADCSRA = bit(ADEN) |	  // enable ADC
+    //    bit(ADSC) |		// start conversion
+    //    bit(ADATE) |		// auto trigger enable
+    bit(ADPS2) | bit(ADPS1) | bit(ADPS0); // scale ADC clock by 128
+}
 
 /* Read the A/D Converter */
 uint16_t read_adc()
@@ -38,60 +105,46 @@ uint16_t read_adc()
 
 int main()
 {
-  int16_t current, hi, low, amplitude, hi_amp, threshold, mean, variance;
+  int16_t current = 0,
+    hi = 0,
+    hi_amp = 0,
+    threshold = 1000;
+  unsigned long last_hi = 0,
+    current_millis = 0;
 
-  hi = low = 0;
-  amplitude = 10000;
-  hi_amp = 0;
-  threshold = 0;
-  mean = 0;
-  variance = 0;
+  millis_init();		/* enable the millisecond counter */
 
-  DDRB = bit(DDB0) | bit(DDB2); // Set pin 5 (PB0) and 7 (PB2) be
-				// outputs, all others inputs
+  // Set pins 5 (PB0), 7 (PB2), and 2 (PB3) as outputs, all others
+  // inputs
+  DDRB = bit(DDB0) | bit(DDB2) | bit(DDB3); 
   PORTB |= bit(DDB1);		// enable pullup on pin 6 (PB1)
 
-  /* setup the ADC */
-  ADMUX = bit(REFS2) | bit(REFS1) | // Vref = internal 2.56V
-    bit(ADLAR) | 0x7;	  // left shifted
-				// input is differential PB4/PB3 (ADC2/ADC3)
-				// plus 20x gain
-  DIDR0 = bit(ADC2D) | bit(ADC3D); // disable the digital inputs on ADC2/ADC3
-  ADCSRB = bit(BIN);	      // bipolar input mode, free running mode
-  ADCSRA = bit(ADEN) |		// enable ADC
-    //    bit(ADSC) |		// start conversion
-    //    bit(ADATE) |		// auto trigger enable
-    bit(ADPS2) | bit(ADPS1) | bit(ADPS0); // scale ADC clock by 128
-
+  adc_init();
 
   while (1) {
     current = read_adc();
+    current_millis = millis();
 
-    /* consider some stats (probably to be removed later) */
-    mean = filter(mean, current);
-    variance = filter(variance, (current - mean) * (current - mean));
-
-    /* track hi and low */
-    hi = (current > hi) ? hi + attack : hi - decay;
-    low = (current < low) ? low - attack : low + decay;
-
-
-    /* low-pass filter the amplitude (difference from low to high) */
-    amplitude = filter(amplitude, hi - low);
+    /* track hi with a decay */
+    hi = (current > hi) ? current : hi - decay;
 
     /* set threshold */
     if (BUTTON_PUSHED()) {
-      if (amplitude > hi_amp) {
-	hi_amp = amplitude;
-	threshold = (hi_amp * 3) / 2;
+      if (hi > hi_amp) {
+	hi_amp = hi;
+	threshold = (hi_amp * 3) / 2; /* set threshold 50% higher */
       }
     } else
       hi_amp = 0;
 
 
-    /* use the LED to show various things */
-    if (BUTTON_PUSHED() ||
-	(amplitude > threshold)) {
+    /* values greater than the threshold update the time */
+    if (current > threshold)
+      last_hi = current_millis;
+
+
+    /* if the last high value was more recent than timeout, detection */
+    if ((current_millis - last_hi) < timeout) { /* a 2 second timeout */
       OUTPUT_ON();
     } else {
       OUTPUT_OFF();
