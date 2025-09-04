@@ -4,6 +4,7 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/atomic.h>
+#include <avr/eeprom.h>
 
  
 #define bit(n) (1<<n)
@@ -13,9 +14,9 @@
 #define LED_ON() { bit_set(PORTB, PORTB2) }
 #define LED_OFF() { bit_clear(PORTB, PORTB2) }
 
-/* Control both the LED and the MSS output */
-#define OUTPUT_ON() { PORTB |= bit(PORTB2) | bit(PORTB0); }
-#define OUTPUT_OFF() { PORTB &= ~(bit(PORTB2) | bit(PORTB0)); }
+/* Control the LED, MSS, and detect outputs */
+#define OUTPUT_ON() { PORTB |= bit(PORTB3) | bit(PORTB2) | bit(PORTB0); }
+#define OUTPUT_OFF() { PORTB &= ~(bit(PORTB3) | bit(PORTB2) | bit(PORTB0)); }
 
 #define BUTTON_PUSHED() (!bit_is_set(PINB, DDB1))
 
@@ -24,10 +25,13 @@ const int16_t decay = 10;
 const int32_t filtern = 980;	/* filter numerator */
 const int32_t filterd = 1000;	/* filter denominator */
 const unsigned int timeout = 2000; /* 2 seconds */
+const unsigned int sample_time = 2000; /* 2 seconds */
 #define filter(old, new) (((old * filtern)/filterd) + (((new * (filterd-filtern))/filterd)))
 
+uint16_t *threshold_p = 0; /* EEPROM address for the saved threshold */
+
 /*
- * Timer interrupt code to implement a millis() functin.
+ * Timer interrupt code to implement a millis() function.
  */
 volatile unsigned long timer0_millis = 0;
 
@@ -75,7 +79,6 @@ void adc_init()
     //    bit(ADATE) |		// auto trigger enable
     bit(ADPS2) | bit(ADPS1) | bit(ADPS0); // scale ADC clock by 128
 
-
   /* setup the ADC */
   ADMUX =		  // Vref = Vcc
     bit(ADLAR) |	  // left shifted
@@ -93,7 +96,7 @@ uint16_t read_adc()
 {
   uint8_t c_low, c_hi;
 
-  ADCSRA |= bit(ADSC);	/* start conversion */
+  ADCSRA |= bit(ADSC);		   /* start conversion */
   while (bit_is_set(ADCSRA, ADSC)) /* wait for ADC to finish */
     ;				   /* should probably time out */
 
@@ -105,51 +108,61 @@ uint16_t read_adc()
 
 int main()
 {
-  int16_t current = 0,
-    hi = 0,
-    hi_amp = 0,
-    threshold = 1000;
+  int16_t amps = 0,
+    hi_amps = 0,
+    threshold = 1000,
+    setting_threshold = 0;
   unsigned long last_hi = 0,
     current_millis = 0;
+
+  threshold = eeprom_read_word(threshold_p); /* read the stored threshold */
 
   millis_init();		/* enable the millisecond counter */
 
   // Set pins 5 (PB0), 7 (PB2), and 2 (PB3) as outputs, all others
   // inputs
   DDRB = bit(DDB0) | bit(DDB2) | bit(DDB3); 
-  PORTB |= bit(DDB1);		// enable pullup on pin 6 (PB1)
+  PORTB |= bit(DDB1);		/* enable pullup on pin 6 (PB1) for the pushbutton */
 
-  adc_init();
+  adc_init();			/* setup the ADC */
 
   while (1) {
-    current = read_adc();
     current_millis = millis();
-
-    /* track hi with a decay */
-    hi = (current > hi) ? current : hi - decay;
-
-    /* set threshold */
-    if (BUTTON_PUSHED()) {
-      if (hi > hi_amp) {
-	hi_amp = hi;
-	threshold = (hi_amp * 3) / 2; /* set threshold 50% higher */
+    if (setting_threshold) {
+      if ((current_millis - last_hi) > sample_time) {
+	threshold = (hi_amps * 15) / 10; /* set threshold 50% higher */
+	eeprom_write_word(threshold_p, threshold);
+	setting_threshold = 0;
+	last_hi = 0;
+	LED_OFF();
+      } else {
+	/* set hi_amps to the highest reading during the sample period */
+	amps = read_adc();
+	if (amps > hi_amps)
+	  hi_amps = amps;
       }
-    } else
-      hi_amp = 0;
-
-
-    /* values greater than the threshold update the time */
-    if (current > threshold)
-      last_hi = current_millis;
-
-
-    /* if the last high value was more recent than timeout, detection */
-    if ((current_millis - last_hi) < timeout) { /* a 2 second timeout */
-      OUTPUT_ON();
     } else {
-      OUTPUT_OFF();
-    }
+      if (BUTTON_PUSHED()) {
+	setting_threshold = 1;
+	last_hi = current_millis; /* use last_hi for the sample timeout */
+	hi_amps = 0;
+	LED_ON();
+      } else {
+	amps = read_adc();
 
-    _delay_ms(1);
+	/* values greater than the threshold update the time */
+	if (amps > threshold)
+	  last_hi = current_millis;
+
+	/* if the last high value was more recent than timeout, set detection outputs */
+	if ((current_millis - last_hi) < timeout) {
+	  OUTPUT_ON();
+	} else {
+	  OUTPUT_OFF();
+	}
+
+	_delay_ms(1);
+      }
+    }
   }
 }
